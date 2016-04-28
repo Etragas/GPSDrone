@@ -1,0 +1,132 @@
+if (sim_call_type==sim_childscriptcall_initialization) then 
+	-- Make sure we have version 2.4.13 or above (the particles are not supported otherwise)
+	v=simGetIntegerParameter(sim_intparam_program_version)
+	if (v<20413) then
+		simDisplayDialog('Warning','The propeller model is only fully supported from V-REP version 2.4.13 and above.&&nThis simulation will not run as expected!',sim_dlgstyle_ok,false,'',nil,{0.8,0,0,0,0,0})
+	end
+
+	-- Detatch the manipulation sphere:
+	targetObj=simGetObjectHandle('Quadricopter_target')
+	simSetObjectParent(targetObj,-1,true)
+
+	-- This control algo was quickly written and is dirty and not optimal. It just serves as a SIMPLE example
+
+	d=simGetObjectHandle('Quadricopter_base')
+	quad=simGetObjectHandle('Quadricopter')
+
+	particlesAreVisible=simGetScriptSimulationParameter(sim_handle_self,'particlesAreVisible')
+	simSetScriptSimulationParameter(sim_handle_tree,'particlesAreVisible',tostring(particlesAreVisible))
+	simulateParticles=simGetScriptSimulationParameter(sim_handle_self,'simulateParticles')
+	simSetScriptSimulationParameter(sim_handle_tree,'simulateParticles',tostring(simulateParticles))
+
+	propellerScripts={-1,-1,-1,-1}
+	for i=1,4,1 do
+		propellerScripts[i]=simGetScriptHandle('Quadricopter_propeller_respondable'..i)
+		simSetScriptSimulationParameter(propellerScripts[i],'particleVelocity',0)
+	end
+
+
+	fakeShadow=simGetScriptSimulationParameter(sim_handle_self,'fakeShadow')
+	if (fakeShadow) then
+		shadowCont=simAddDrawingObject(sim_drawing_discpoints+sim_drawing_cyclic+sim_drawing_25percenttransparency+sim_drawing_50percenttransparency+sim_drawing_itemsizes,0.2,0,-1,1)
+		shadowContTarget=simAddDrawingObject(sim_drawing_discpoints+sim_drawing_cyclic+sim_drawing_25percenttransparency+sim_drawing_50percenttransparency+sim_drawing_itemsizes,0.2,0,-1,1)
+	end
+
+	-- Prepare 2 floating views with the camera views:
+	floorCam=simGetObjectHandle('Quadricopter_floorCamera')
+	frontCam=simGetObjectHandle('Quadricopter_frontCamera')
+	floorView=simFloatingViewAdd(0.9,0.9,0.2,0.2,0)
+	frontView=simFloatingViewAdd(0.7,0.9,0.2,0.2,0)
+	simAdjustView(floorView,floorCam,64)
+	simAdjustView(frontView,frontCam,64)
+
+	-- Start Remote API for adding forces
+	simExtRemoteApiStart(20001)
+	simSetFloatSignal("force_x", 0)
+	simSetFloatSignal("force_y", 0)
+	simSetFloatSignal("force_z", 0)
+	str=simPackFloats({0,0,0,0})
+	simSetStringSignal("rotorTargetVelocities", str)
+end 
+
+if (sim_call_type==sim_childscriptcall_cleanup) then 
+	simRemoveDrawingObject(shadowCont)
+	simFloatingViewRemove(floorView)
+	simFloatingViewRemove(frontView)
+end 
+
+if (sim_call_type==sim_childscriptcall_actuation) then 
+	s=simGetObjectSizeFactor(d)
+	
+	pos=simGetObjectPosition(d,-1)
+	
+	if (fakeShadow) then
+		itemData={pos[1],pos[2],0.002,0,0,1,0.2*s}
+		simAddDrawingObjectItem(shadowCont,itemData)
+
+		-- Draw shadow for target
+		targetPos=simGetObjectPosition(targetObj,-1)
+		itemData={targetPos[1],targetPos[2],0.002,0,0,1,0.1*s}
+		simAddDrawingObjectItem(shadowContTarget,itemData)
+	end
+
+	-- Send the desired motor velocities to the 4 rotors:
+	data=simGetStringSignal("rotorTargetVelocities")
+	
+	if (data ~= nil) then
+		vector=simUnpackFloats(data)
+		if (vector[1] ~= nil) then
+			for i=1,4,1 do
+				simSetScriptSimulationParameter(propellerScripts[i],'particleVelocity',vector[i])
+			end
+		end
+	end
+
+	-- Retrive signals from vrep_gui.py
+	--mass=simGetIntegerSignal("mass")
+	--print(mass)
+	--simSetShapeMassAndInertia(sim_handle_self, mass)
+	force_x = simGetFloatSignal("force_x")
+	force_y = simGetFloatSignal("force_y")
+	force_z = simGetFloatSignal("force_z")
+	if (force_x == nil) then
+		force_x = 0
+	end
+	if (force_y == nil) then
+		force_y = 0
+	end
+	if (force_z == nil) then
+		force_z = 0
+	end
+	
+	-- check if in wind zone, add appropriate force
+	--WindZone1
+	if pos[1] > -8 and pos[1] < -1.5 and pos[2] > -1.4 and pos[2] < -0.4 and pos[3] < .8 then
+		force_x = force_x - .8
+	end
+	--WindZone2
+	if pos[1] > -5.15 and pos[1] < 4.35 and pos[2] > 1.475-.75 and pos[2] < 1.475+.75 and pos[3] < .8 then
+		force_x = force_x + .6
+	end
+	--WindZone3
+	if pos[1] > 0.975 and pos[1] < 1.775 and pos[2] > 2.825 and pos[2] < 6.825 and pos[3] < .8 then
+		force_y = force_y + 1
+	end
+	--WeirdForceZone
+	if pos[1] > -2.5 and pos[1] < 2.5 and pos[2] > -4 and pos[2] < -2 and pos[3] < 2 then
+		vel, ang = simGetObjectVelocity(d)
+		force_z = force_z - math.sqrt(vel[1] ^ 2 + vel[2] ^ 2)*2
+	end
+	--[[
+	-- check if in nonlinear wind zone, add appropriate force
+	if pos[1] > -10 and pos[1] < -3 and pos[3] < 2 then
+		vel, ang = simGetObjectVelocity(d)
+		force_x = force_x - 1*vel[2]
+	end
+	]]
+	
+	force = {force_x, force_y, force_z}
+
+	simAddForceAndTorque(quad,force,nil)
+
+end 
