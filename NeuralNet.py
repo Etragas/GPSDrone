@@ -1,5 +1,6 @@
 #Use NN to train on provides data
 from Simulation import *
+from utils import *
 from function_names import *
 import numpy as np
 from numpy import *
@@ -49,7 +50,7 @@ class Net():
 
         mom = .95
         prev_acc = Inf
-        for i in range(1000):
+        for i in range(100):
             train_step.run(feed_dict={x: input, y_: out, keep_prob:.5, momentum:mom})
             pred = sess.run([y],feed_dict={x: val_in, y_: out, keep_prob:1, momentum:mom})
             pred = np.asarray(pred,dtype=float32)[0,:,:]
@@ -61,65 +62,18 @@ class Net():
             print(np.mean(acc))
         return sess, y, x, keep_prob, momentum
 
-
-T = 201
-dx = 9
-du = 4
-
-states = np.zeros((T-1, dx))
-actions = np.zeros((T-1, du))
-state_normalizers = np.zeros((1,2))
-action_normalizers = np.zeros((1,2))
-directory = '/home/elias/etragas@gmail.com/_Winter2015/CSC494/Trajectories/'
-names = ['Traj'+str(x) for x in range(1,28)]
-for var in names:
-    file = var+'state.txt'
-    state = np.array(np.genfromtxt(directory + file, delimiter=','))
-    #state = state[1:]
-    print(file)
-    # state_normalizers = np.append(state_normalizers, np.array([[np.mean(state),(np.max(state)-np.min(state))]]),axis =0)
-    print(state_normalizers[-1])
-    # state = (state - state_normalizers[-1][0]) / state_normalizers[-1][1]
-
-    states = np.append(states, np.array([state])[0,:,:], axis=0)
-    file = var + 'action.txt'
-    print(file)
-    action = np.array(np.genfromtxt(directory + file))
-    #action = action[1:] #Keep only second and after
-    # action_normalizers = np.append(action_normalizers, np.array([[np.mean(action),(np.max(action)-np.min(action))]]),axis =0)
-    print(action_normalizers [-1])
-    # action = (action- action_normalizers[-1][0]) / action_normalizers[-1][1]
-
-    print(file)
-    print(actions.shape)
-    actions = np.append(actions, np.array([action])[0,:,:], axis=0)
-
-#States is 27xTx9
-#Actions is 27xTx4
-states = states[1:]
-actions = actions[1:]
-# state_normalizers = state_normalizers[1:]
-# action_normalizers = action_normalizers[1:]
-print(state.shape)
 functions = {}
 args = {}
 real_fun(functions)
 #
 norm_states = genfromtxt('/home/elias/etragas@gmail.com/_Winter2015/CSC494/Trajectories/Traj1state.txt', delimiter=',',dtype=float32)
 norm_actions = genfromtxt('/home/elias/etragas@gmail.com/_Winter2015/CSC494/Trajectories/Traj1action.txt' ,dtype=float32)
-#
-state_mean, state_dif = np.mean(norm_states), (np.max(norm_states)-np.min(norm_states))
-action_mean, action_dif = np.mean(norm_actions), (np.max(norm_actions)-np.min(norm_actions))
-# states = (states - state_mean)/ (state_dif)
-# actions = (actions - action_mean) / (action_dif)
-#print(actions)
-#raw_input()
-T,d = states.shape
-print(actions.shape)
+states,actions = get_flat_files()
 #Create simulation
 Sim = Simulation(function=functions["Traj1"], args=[[0,0,3],0])
 nn = Net()
 states, actions = shuffle_in_unison(states,actions)
+T,d = states.shape
 train_states = states[:4800,:]
 train_actions = actions[:4800,:]
 val_states, val_actions =- states[4800:,:], actions[4800:,:]
